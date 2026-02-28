@@ -115,52 +115,51 @@ This system implements a computer vision pipeline that:
 
 ---
 
-## 📂 Project Structure
+# 📂 Project Structure
 deepfake-detection-system/
 │
 ├── data/
-│ ├── raw/
-│ │ ├── real/
-│ │ ├── fake/
-│ │ └── metadata.json
-│ │
-│ └── processed/
-│ ├── real/
-│ └── fake/
+│   ├── raw/
+│   │   ├── real/
+│   │   ├── fake/
+│   │   └── metadata.json
+│   │
+│   └── processed/
+│       ├── real/
+│       └── fake/
 │
 ├── preprocessing/
-│ ├── dataset_split.py
-│ ├── frame_extractor.py
-│ ├── face_detector.py
-│ └── augmentations.py
+│   ├── dataset_split.py
+│   ├── frame_extractor.py
+│   ├── face_detector.py
+│   └── augmentations.py
 │
 ├── model/
-│ ├── cnn_model.py
-│ ├── frequency_branch.py
-│ └── loss.py
+│   ├── cnn_model.py
+│   ├── frequency_branch.py
+│   └── loss.py
 │
 ├── training/
-│ ├── train.py
-│ ├── evaluate.py
-│ ├── metrics.py
-│ └── early_stopping.py
+│   ├── train.py
+│   ├── evaluate.py
+│   ├── metrics.py
+│   └── early_stopping.py
 │
 ├── inference/
-│ ├── predict.py
-│ └── realtime_inference.py
+│   ├── predict.py
+│   └── realtime_inference.py
 │
 ├── explainability/
-│ ├── gradcam.py
-│ └── heatmap_utils.py
+│   ├── gradcam.py
+│   └── heatmap_utils.py
 │
 ├── notebooks/
-│ ├── EDA.ipynb
-│ └── FFT_experiments.ipynb
+│   ├── EDA.ipynb
+│   └── FFT_experiments.ipynb
 │
 ├── app.py
 ├── requirements.txt
 └── README.md
-
 ---
 
 ## 🛠 Tech Stack
@@ -234,9 +233,11 @@ deepfake-detection-system/
 - Mobile integration
 
 
-## Role Distribution
-| Priyanka | ML Lead (Model + Training Head) |
-|----------|----------------------------------|
-| Aditi   | System + Backend Engineer |
-| Aparajita | Frontend + Visualization Engineer |
+## 👩‍💻 Author
+priyankagnana |aparajita | aditi
+AI & Machine Learning Enthusiast  
+Computer Vision | Deep Learning | Explainable AI  
 
+## 📜 License
+
+This project is released under the MIT License.
