@@ -51,7 +51,7 @@ def train(max_epochs=50, patience=12):
 
     # Halve the LR when val_accuracy stops improving for 4 consecutive epochs
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="max", factor=0.5, patience=4, min_lr=1e-6, verbose=True
+        optimizer, mode="max", factor=0.5, patience=4, min_lr=1e-6
     )
 
     # Monitor val_accuracy (not val_loss) so early stopping isn't fooled by
