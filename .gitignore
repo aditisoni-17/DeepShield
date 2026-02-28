@@ -1,0 +1,15 @@
+# Ignore dataset
+data/
+
+# Ignore virtual environment
+venv/
+
+# Ignore mac system files
+.DS_Store
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore saved models
+saved_models/
