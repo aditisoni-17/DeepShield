@@ -234,11 +234,10 @@ deepfake-detection-system/
 - Mobile integration
 
 
-## 👩‍💻 Author
-priyankagnana |aparajita | aditi
-AI & Machine Learning Enthusiast  
-Computer Vision | Deep Learning | Explainable AI  
+## Role Distribution
+| Priyanka | ML Lead (Model + Training Head) |
+|----------|----------------------------------|
+| Aditi   | System + Backend Engineer |
+|----------|----------------------------------|
+| Aparajita | Frontend + Visualization Engineer |
 
-## 📜 License
-
-This project is released under the MIT License.
