@@ -1,231 +1,242 @@
----
+# 🎭 Real-Time Deepfake Detection System
 
-# DeepGuard
+## 📌 Overview
 
-<div align="center">
+Deepfake technology uses artificial intelligence to manipulate facial expressions and generate highly realistic fake videos. While powerful, this technology poses serious risks including misinformation, identity theft, cybercrime, and political manipulation.
 
-### Offline Real-Time Deepfake Detection System
+This project presents a Deep Learning–based Deepfake Detection System that classifies videos as:
 
-Privacy-First • Real-Time • Explainable AI • Fully Offline
+- ✅ REAL
+- ❌ FAKE
 
-</div>
-
----
-
-## Overview
-
-**DeepGuard** is a real-time, fully offline Deepfake Detection System capable of analyzing:
-
-* Live webcam feeds
-* Uploaded video files
-
-It detects AI-generated facial manipulations using a hybrid approach combining:
-
-* Spatial artifact detection
-* Frequency-domain (FFT) analysis
-* Lighting inconsistency detection
-* Facial geometry validation
-
-All inference runs locally — ensuring complete privacy and transparency.
+The system also provides model explainability using Grad-CAM heatmaps to visualize the regions influencing predictions.
 
 ---
 
-## Mission
+# 🏗 System Architecture
 
-> Make digital trust **verifiable — not assumed.**
-
-DeepGuard empowers users with independent authenticity verification without relying on cloud APIs or third-party services.
-
----
-
-## Detection Intelligence Pipeline
-
-### 1. Spatial Artifact Detection
-
-* GAN blending inconsistencies
-* Boundary artifacts
-* Texture irregularities
-
-### 2. Frequency-Domain Analysis
-
-* Fast Fourier Transform (FFT)
-* High-frequency noise anomaly detection
-* GAN spectral fingerprint analysis
-
-### 3. Lighting & Geometry Validation
-
-* Shadow mismatch detection
-* Reflection inconsistencies
-* Facial landmark distortion checks
-
----
-
-## Output Dashboard
-
-DeepGuard provides a real-time visual analytics interface:
-
-### Authenticity Confidence Score
-
-```
-92% Likely Real
-87% Likely Synthetic
-```
-
-### Heatmap Overlay
-
-Grad-CAM visualization highlighting suspicious facial regions.
-
-### Spectral Analysis Graph
-
-Displays frequency inconsistencies typical of GAN-based models.
-
-### Artifact Summary
-
-* Lighting mismatch detected
-* High-frequency anomaly detected
-* Facial boundary blending artifacts found
+## 🔹 High Level Architecture
+           ┌────────────────────┐
+           │     Input Video     │
+           └──────────┬──────────┘
+                      ↓
+           ┌────────────────────┐
+           │  Frame Extraction   │
+           └──────────┬──────────┘
+                      ↓
+           ┌────────────────────┐
+           │   Face Detection    │
+           └──────────┬──────────┘
+                      ↓
+           ┌────────────────────┐
+           │  Image Preprocessing│
+           │ (Resize, Normalize) │
+           └──────────┬──────────┘
+                      ↓
+           ┌────────────────────────────┐
+           │  CNN + Frequency Analysis   │
+           │  (Spatial + FFT Branch)     │
+           └──────────┬──────────────────┘
+                      ↓
+           ┌────────────────────┐
+           │   Classification    │
+           │   Real / Fake       │
+           └──────────┬──────────┘
+                      ↓
+           ┌────────────────────┐
+           │   Grad-CAM Module   │
+           │   Heatmap Output    │
+           └────────────────────┘
 
 ---
 
-## Live Monitoring Mode
+## 🔹 Detailed Pipeline Architecture
 
-* Frame-by-frame real-time detection
-* Target latency: < 100ms per frame
-* Optimized for consumer CPU/GPU systems
-* Fully offline inference
+### 1. Data Layer
+- Deepfake Detection Challenge Dataset
+- REAL and FAKE videos
+- Metadata-based labeling
 
----
+### 2. Preprocessing Layer
+- Video loading
+- Frame extraction (every Nth frame)
+- Face cropping
+- Resize to 224x224
+- Normalization
 
-## System Architecture
+### 3. Feature Extraction Layer
 
-```
-Input Layer
-   ├── Webcam Stream
-   └── Video File
+#### Spatial Branch (CNN)
+- Convolution Layers
+- Batch Normalization
+- ReLU Activation
+- Max Pooling
+- Fully Connected Layers
 
-Preprocessing
-   ├── Face Detection
-   ├── Face Alignment
-   └── Normalization
+#### Frequency Branch
+- Fast Fourier Transform (FFT)
+- Frequency artifact extraction
+- Feature fusion with spatial features
 
-Feature Extraction
-   ├── CNN Artifact Detector
-   ├── FFT Frequency Analyzer
-   ├── Lighting Consistency Estimator
-   └── Facial Geometry Analyzer
+### 4. Classification Layer
+- Dense Layer
+- Sigmoid Activation
+- Binary Output (Real = 0, Fake = 1)
 
-Inference Engine
-   ├── Lightweight CNN (MobileNet / EfficientNet-Lite)
-   ├── Model Quantization Support
-   └── Grad-CAM Explainability
-
-Output Layer
-   ├── Confidence Score
-   ├── Heatmap Visualization
-   ├── Frequency Graph
-   └── Artifact Report
-```
-
----
-
-## Dataset
-
-**Deepfake Detection Challenge (DFDC)**
-[https://www.kaggle.com/competitions/deepfake-detection-challenge/data](https://www.kaggle.com/competitions/deepfake-detection-challenge/data)
-
-### Dataset Requirements
-
-* Labeled real vs synthetic videos
-* Lighting variability
-* Multiple GAN architectures
-* Cross-method generalization capability
+### 5. Explainability Layer
+- Grad-CAM
+- Heatmap overlay on frames
+- Visual focus area highlighting
 
 ---
 
-## Installation
+## 🎯 Problem Statement
 
-```bash
-git clone https://github.com/yourusername/deepguard.git
-cd deepguard
+The rise of deepfake videos has created major security and trust issues across digital platforms. Manual verification is inefficient and unreliable. An automated AI-based detection system is necessary to:
 
-python -m venv venv
-source venv/bin/activate      # Mac/Linux
-# venv\Scripts\activate       # Windows
-
-pip install -r requirements.txt
-```
+- Detect manipulated facial regions
+- Identify frequency inconsistencies
+- Provide explainable predictions
+- Support real-time inference
 
 ---
 
-## Running DeepGuard
+## 💡 Proposed Solution
 
-### Webcam Mode
+This system implements a computer vision pipeline that:
 
-```bash
-python app.py --mode webcam
-```
-
-### Video File Mode
-
-```bash
-python app.py --mode video --input path/to/video.mp4
-```
+1. Extracts frames from videos
+2. Detects faces
+3. Preprocesses images
+4. Trains a Convolutional Neural Network (CNN)
+5. Applies frequency-domain analysis
+6. Classifies real vs fake
+7. Generates Grad-CAM heatmaps for interpretability
 
 ---
 
-## Technology Stack
+## 📂 Project Structure
+deepfake-detection-system/
+│
+├── data/
+│ ├── raw/
+│ │ ├── real/
+│ │ ├── fake/
+│ │ └── metadata.json
+│ │
+│ └── processed/
+│ ├── real/
+│ └── fake/
+│
+├── preprocessing/
+│ ├── dataset_split.py
+│ ├── frame_extractor.py
+│ ├── face_detector.py
+│ └── augmentations.py
+│
+├── model/
+│ ├── cnn_model.py
+│ ├── frequency_branch.py
+│ └── loss.py
+│
+├── training/
+│ ├── train.py
+│ ├── evaluate.py
+│ ├── metrics.py
+│ └── early_stopping.py
+│
+├── inference/
+│ ├── predict.py
+│ └── realtime_inference.py
+│
+├── explainability/
+│ ├── gradcam.py
+│ └── heatmap_utils.py
+│
+├── notebooks/
+│ ├── EDA.ipynb
+│ └── FFT_experiments.ipynb
+│
+├── app.py
+├── requirements.txt
+└── README.md
 
-| Layer             | Tools                   |
-| ----------------- | ----------------------- |
-| Core Language     | Python                  |
-| Computer Vision   | OpenCV                  |
-| Deep Learning     | PyTorch / TensorFlow    |
-| Signal Processing | NumPy (FFT)             |
-| Visualization     | Matplotlib              |
-| Optimization      | ONNX Runtime (Optional) |
-| UI                | Streamlit / PyQt        |
+---
+
+## 🛠 Tech Stack
+
+### Programming Language
+- Python 3.x
+
+### Deep Learning
+- PyTorch / TensorFlow
+
+### Computer Vision
+- OpenCV
+- CNN Architecture
+- FFT (Frequency Analysis)
+
+### Data Processing
+- NumPy
+- Pandas
+- Scikit-learn
+
+### Visualization
+- Matplotlib
+- Seaborn
+
+### Explainability
+- Grad-CAM
+
+### Deployment
+- Streamlit
 
 ---
 
-## Privacy & Security
+## 📊 Evaluation Metrics
 
-* Fully Offline Operation
-* No Cloud API Calls
-* No Automatic Video Storage
-* Explainable AI (No Black-Box Predictions)
-* Lightweight & Efficient Model Design
-
----
-
-## Real-World Applications
-
-* Social Media Verification
-* Journalism & Fact-Checking
-* Corporate Impersonation Detection
-* Educational Awareness Tool
-* Law Enforcement Investigation
-* Personal Authenticity Checks
+- Accuracy
+- Precision
+- Recall
+- F1 Score
+- Confusion Matrix
 
 ---
 
-## Future Enhancements
+## 🔥 Key Features
 
-* Audio Deepfake Detection
-* Lip-Sync Inconsistency Analysis
-* Voice-Face Synchronization Verification
-* Edge Deployment (Mobile & Browser Extension)
-* Blockchain Authenticity Watermark Integration
-* Adversarial Robustness Training
-* Advanced Attention-Based Explainability
+- Binary classification (Real vs Fake)
+- Frame-level deepfake detection
+- Spatial + Frequency feature fusion
+- Model interpretability via Grad-CAM
+- Real-time inference capability
 
 ---
 
-## Technical Constraints
+## 🚀 Applications
 
-* Fully offline operation
-* Real-time processing (<100ms per frame preferred)
-* Optimized for limited CPU/GPU systems
-* Efficient, compressed model size
-* Minimal memory footprint
+- Social media content verification
+- News authenticity validation
+- Cybercrime detection
+- Digital identity protection
+- Media forensics
 
 ---
+
+![ER Diagram](assets/Real_Time_deepfake_Detection.png)
+
+## 🔮 Future Enhancements
+
+- Transformer-based models
+- 3D CNN for temporal modeling
+- EfficientNet backbone
+- Cloud deployment (AWS/GCP)
+- Mobile integration
+
+
+## Role Distribution
+| Priyanka | ML Lead (Model + Training Head) |
+|----------|----------------------------------|
+| Aditi   | System + Backend Engineer |
+| Aparajita | Frontend + Visualization Engineer |
+
