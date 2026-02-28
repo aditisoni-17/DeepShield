@@ -223,7 +223,7 @@ deepfake-detection-system/
 
 ---
 
-<img src="assets/Real_Time_deepfake_Detection.png" width="600">
+![ER Diagram](assets/Real_Time_deepfake_Detection.png)
 
 ## 🔮 Future Enhancements
 
