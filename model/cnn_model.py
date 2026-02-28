@@ -1,66 +1,54 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from model.frequency_branch import FrequencyBranch
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 
 
 class DeepfakeCNN(nn.Module):
     """
-    Dual-branch deepfake detector.
+    Deepfake detector built on a pretrained EfficientNet-B0 backbone.
 
-    Spatial branch: 4 conv blocks (32→64→128→256) with BatchNorm + MaxPool
-    Frequency branch: FFT magnitude processed by a separate conv stack
-    Fusion: concat → BN → Dropout → classifier
+    Training strategy (two phases managed by train.py):
+      Phase 1 — backbone frozen, only the classifier head trains.
+                 Quickly learns to map EfficientNet features → fake/real.
+      Phase 2 — last two MBConv blocks + classifier unfrozen with a small LR.
+                 Backbone subtly adapts to deepfake-specific texture cues.
 
-    Changes from v1:
-    - 4 conv blocks instead of 2 → richer spatial features, smaller FC input
-      (256 × 14 × 14 = 50 176 vs original 64 × 56 × 56 = 200 704)
-    - Dropout(0.5) on the spatial FC and on the fused representation
-    - BatchNorm1d on the fused 256-dim vector normalises the two branches to
-      the same scale before the classifier sees them
+    Architecture:
+      EfficientNet-B0 backbone (ImageNet pretrained) → 1280-dim features
+      → Dropout(0.4)  [already inside EfficientNet's classifier]
+      → Linear(1280 → 1)  [binary output, no sigmoid — use BCEWithLogitsLoss]
     """
 
     def __init__(self):
         super(DeepfakeCNN, self).__init__()
 
-        # --- Spatial branch ---
-        self.conv1 = nn.Conv2d(3,   32,  3, padding=1)
-        self.bn1   = nn.BatchNorm2d(32)
-        self.conv2 = nn.Conv2d(32,  64,  3, padding=1)
-        self.bn2   = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64,  128, 3, padding=1)
-        self.bn3   = nn.BatchNorm2d(128)
-        self.conv4 = nn.Conv2d(128, 256, 3, padding=1)
-        self.bn4   = nn.BatchNorm2d(256)
-        self.pool  = nn.MaxPool2d(2, 2)
+        self.backbone = efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
 
-        # After 4 × pool(2,2): 224 → 14  →  256 × 14 × 14
-        self.spatial_fc      = nn.Linear(256 * 14 * 14, 256)
-        self.spatial_bn      = nn.BatchNorm1d(256)
-        self.spatial_dropout = nn.Dropout(0.5)
+        in_features = self.backbone.classifier[1].in_features
+        self.backbone.classifier = nn.Sequential(
+            nn.Dropout(p=0.4, inplace=True),
+            nn.Linear(in_features, 1),
+        )
 
-        # --- Frequency branch ---
-        self.frequency_branch = FrequencyBranch()
+        # Start with backbone fully frozen; train.py calls unfreeze_top_blocks()
+        # after the warm-up phase
+        self._freeze_backbone()
 
-        # --- Fusion ---
-        # spatial(256) + frequency(128) = 384
-        self.fusion_bn      = nn.BatchNorm1d(384)
-        self.fusion_dropout = nn.Dropout(0.5)
-        self.classifier     = nn.Linear(384, 1)
+    def _freeze_backbone(self):
+        """Freeze all backbone (feature extractor) parameters."""
+        for param in self.backbone.features.parameters():
+            param.requires_grad = False
+
+    def unfreeze_top_blocks(self):
+        """
+        Unfreeze the last two MBConv blocks for fine-tuning.
+        Called by train.py after the classifier head has warmed up.
+        blocks[7] and blocks[8] are the deepest feature layers in EfficientNet-B0.
+        """
+        for block in [self.backbone.features[7], self.backbone.features[8]]:
+            for param in block.parameters():
+                param.requires_grad = True
+        print("Unfroze EfficientNet blocks 7 & 8 for fine-tuning.")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Spatial branch
-        s = self.pool(F.relu(self.bn1(self.conv1(x))))
-        s = self.pool(F.relu(self.bn2(self.conv2(s))))
-        s = self.pool(F.relu(self.bn3(self.conv3(s))))
-        s = self.pool(F.relu(self.bn4(self.conv4(s))))
-        s = s.view(s.size(0), -1)
-        s = self.spatial_dropout(F.relu(self.spatial_bn(self.spatial_fc(s))))
-
-        # Frequency branch
-        f = self.frequency_branch(x)
-
-        # Fusion
-        combined = torch.cat((s, f), dim=1)
-        combined = self.fusion_dropout(self.fusion_bn(combined))
-        return self.classifier(combined)
+        return self.backbone(x)
