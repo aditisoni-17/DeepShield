@@ -15,7 +15,7 @@ The system also provides model explainability using Grad-CAM heatmaps to visuali
 
 # 🏗 System Architecture
 
-## 🔹 High-Level Architecture
+## 🔹 High Level Architecture
            ┌────────────────────┐
            │     Input Video     │
            └──────────┬──────────┘
