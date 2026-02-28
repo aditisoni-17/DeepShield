@@ -222,6 +222,9 @@ deepfake-detection-system/
 - Media forensics
 
 ---
+
+<img src="assets/Real_Time_deepfake_Detection.png" width="600">
+
 ## 🔮 Future Enhancements
 
 - Transformer-based models
