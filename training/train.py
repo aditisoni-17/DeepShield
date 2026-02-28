@@ -18,14 +18,17 @@ def _get_device() -> torch.device:
 
 
 def _compute_pos_weight(train_loader, device: torch.device) -> torch.Tensor:
-    """Compute pos_weight = num_fake / num_real to handle class imbalance."""
-    num_fake = 0
-    num_real = 0
-    for _, labels in train_loader.dataset:
-        if labels == 1:
-            num_real += 1
-        else:
-            num_fake += 1
+    """Compute pos_weight = num_fake / num_real to handle class imbalance.
+    Works with both ImageFolder and Subset (used when subsampling the dataset)."""
+    dataset = train_loader.dataset
+    # Subset wraps ImageFolder — pull labels via the subset indices
+    if hasattr(dataset, "indices"):
+        all_targets = dataset.dataset.targets
+        targets = [all_targets[i] for i in dataset.indices]
+    else:
+        targets = dataset.targets
+    num_real = sum(1 for t in targets if t == 1)
+    num_fake = len(targets) - num_real
     if num_real == 0:
         return torch.tensor([1.0], device=device)
     ratio = num_fake / num_real

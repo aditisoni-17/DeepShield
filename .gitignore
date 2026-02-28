@@ -13,3 +13,6 @@ __pycache__/
 
 # Ignore saved models
 saved_models/
+
+140k-faces/
+140k-real-and-fake-faces.zip
