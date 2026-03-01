@@ -4,6 +4,7 @@ Run after training: python -m training.evaluate
 """
 
 import torch
+from tqdm import tqdm
 
 from model.cnn_model import DeepfakeCNN
 from training.dataset import get_dataloaders
@@ -24,7 +25,7 @@ def evaluate(model_path="saved_models/best_model.pth"):
     all_labels = []
 
     with torch.no_grad():
-        for images, labels in test_loader:
+        for images, labels in tqdm(test_loader, desc="Evaluating", unit="batch"):
             images = images.to(device)
             outputs = model(images)
             preds = (outputs.sigmoid() >= 0.5).squeeze(1).long().cpu()
