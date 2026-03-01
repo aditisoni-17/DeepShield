@@ -65,7 +65,7 @@ def generate_gradcam(model, image_tensor, target_layer=None):
     # Grad-CAM: channel weights = global average of gradients
     weights = grad.mean(dim=(2, 3))
     cam = (weights.unsqueeze(-1).unsqueeze(-1) * act).sum(dim=1, keepdim=True)
-    cam = F.relu(cam).squeeze(0).squeeze(0).cpu().numpy()
+    cam = F.relu(cam).squeeze(0).squeeze(0).detach().cpu().numpy()
 
     # Resize to input spatial size
     h, w = image_tensor.shape[2], image_tensor.shape[3]

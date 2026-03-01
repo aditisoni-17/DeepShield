@@ -13,22 +13,43 @@ class DeepfakeCNN(nn.Module):
       Phase 2 — last two MBConv blocks + classifier unfrozen with a small LR.
                  Backbone subtly adapts to deepfake-specific texture cues.
 
-    Architecture:
+    Architecture (use_frequency=False, default):
       EfficientNet-B0 backbone (ImageNet pretrained) → 1280-dim features
-      → Dropout(0.4)  [already inside EfficientNet's classifier]
-      → Linear(1280 → 1)  [binary output, no sigmoid — use BCEWithLogitsLoss]
+      → Dropout(0.4) → Linear(1280 → 1)
+
+    Architecture (use_frequency=True):
+      EfficientNet-B0 → 1280-dim
+      FrequencyBranch (FFT spectrum) → 128-dim
+      Fused → Linear(1408 → 256) → ReLU → Dropout(0.4) → Linear(256 → 1)
+
+    Pass use_frequency=True only when training from scratch with that flag,
+    since it changes the model's parameter shape (incompatible with a
+    checkpoint trained without it).
     """
 
-    def __init__(self):
+    def __init__(self, use_frequency: bool = False):
         super(DeepfakeCNN, self).__init__()
+        self.use_frequency = use_frequency
 
         self.backbone = efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
+        in_features = self.backbone.classifier[1].in_features  # 1280
 
-        in_features = self.backbone.classifier[1].in_features
-        self.backbone.classifier = nn.Sequential(
-            nn.Dropout(p=0.4, inplace=True),
-            nn.Linear(in_features, 1),
-        )
+        if use_frequency:
+            from model.frequency_branch import FrequencyBranch
+            self.freq_branch = FrequencyBranch()
+            # Remove EfficientNet's own classifier; we fuse manually
+            self.backbone.classifier = nn.Identity()
+            self.head = nn.Sequential(
+                nn.Linear(in_features + 128, 256),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=0.4),
+                nn.Linear(256, 1),
+            )
+        else:
+            self.backbone.classifier = nn.Sequential(
+                nn.Dropout(p=0.4, inplace=True),
+                nn.Linear(in_features, 1),
+            )
 
         # Start with backbone fully frozen; train.py calls unfreeze_top_blocks()
         # after the warm-up phase
@@ -51,4 +72,9 @@ class DeepfakeCNN(nn.Module):
         print("Unfroze EfficientNet blocks 7 & 8 for fine-tuning.")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.use_frequency:
+            spatial_features = self.backbone(x)        # (B, 1280)
+            freq_features = self.freq_branch(x)        # (B, 128)
+            fused = torch.cat([spatial_features, freq_features], dim=1)  # (B, 1408)
+            return self.head(fused)
         return self.backbone(x)
