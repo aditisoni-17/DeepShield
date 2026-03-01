@@ -1,363 +1,210 @@
-# 🎭 Real-Time Deepfake Detection System
+# 🛡️ DeepShield — Real-Time Deepfake Detection System
+
+A fully offline, explainable deepfake detection system built on **EfficientNet-B0** with Grad-CAM visual explanations, a polished Streamlit UI, and a FastAPI backend for real-time inference.
+
+---
 
 ## 📌 Overview
 
-Deepfake technology uses artificial intelligence to manipulate facial expressions and generate highly realistic fake videos. While powerful, this technology poses serious risks including misinformation, identity theft, cybercrime, and political manipulation.
+Deepfake technology uses generative AI to create highly realistic synthetic faces in images and videos. While powerful, it poses serious risks — misinformation, identity fraud, impersonation, and reputational harm.
 
-This project presents a Deep Learning–based Deepfake Detection System that classifies videos as:
+**DeepShield** addresses this with a privacy-first, fully offline detection pipeline that:
 
-- ✅ REAL
-- ❌ FAKE
-
-The system also provides model explainability using Grad-CAM heatmaps to visualize the regions influencing predictions.
-
----
-
-# 🏗 System Architecture
-
-## 🔹 High Level Architecture
-           ┌────────────────────┐
-           │     Input Video     │
-           └──────────┬──────────┘
-                      ↓
-           ┌────────────────────┐
-           │  Frame Extraction   │
-           └──────────┬──────────┘
-                      ↓
-           ┌────────────────────┐
-           │   Face Detection    │
-           └──────────┬──────────┘
-                      ↓
-           ┌────────────────────┐
-           │  Image Preprocessing│
-           │ (Resize, Normalize) │
-           └──────────┬──────────┘
-                      ↓
-           ┌────────────────────────────┐
-           │  CNN + Frequency Analysis   │
-           │  (Spatial + FFT Branch)     │
-           └──────────┬──────────────────┘
-                      ↓
-           ┌────────────────────┐
-           │   Classification    │
-           │   Real / Fake       │
-           └──────────┬──────────┘
-                      ↓
-           ┌────────────────────┐
-           │   Grad-CAM Module   │
-           │   Heatmap Output    │
-           └────────────────────┘
+- Classifies images and videos as ✅ **Real** or 🚨 **Fake**
+- Provides **confidence scores** and **P(Real) / P(Fake)** probabilities
+- Explains decisions visually using **Grad-CAM heatmaps**
+- Runs entirely on your machine — **no cloud calls, no data leaves your device**
 
 ---
 
-## 🔹 Detailed Pipeline Architecture
+## 🏗️ System Architecture
 
-### 1. Data Layer
-- Deepfake Detection Challenge Dataset
-- REAL and FAKE videos
-- Metadata-based labeling
+```
+┌─────────────────────┐
+│   Input (Image /    │
+│   Video / Webcam)   │
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│   Face Detection    │  ← OpenCV Haar Cascade (face_detector.py)
+│   & Frame Sampling  │  ← Frame extractor (frame_extractor.py)
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│  Image Preprocessing│  ← Resize 224×224, ImageNet normalize
+└──────────┬──────────┘
+           ↓
+┌──────────────────────────────────────┐
+│         DeepfakeCNN Model            │
+│                                      │
+│  EfficientNet-B0 (Spatial Branch)    │  → 1280-dim features
+│  +                                   │
+│  FrequencyBranch (FFT Spectrum)      │  → 128-dim features  [opt-in]
+│                                      │
+│  Fused → Linear head → Binary logit  │
+└──────────┬───────────────────────────┘
+           ↓
+┌─────────────────────┐
+│  Classification     │  Real / Fake + confidence score
+└──────────┬──────────┘
+           ↓
+┌─────────────────────┐
+│  Grad-CAM Module    │  Visual heatmap over suspicious regions
+└─────────────────────┘
+```
 
-### 2. Preprocessing Layer
-- Video loading
-- Frame extraction (every Nth frame)
-- Face cropping
-- Resize to 224x224
-- Normalization
+---
 
-### 3. Feature Extraction Layer
+## ✨ Key Features
 
-#### Spatial Branch (CNN)
-- Convolution Layers
-- Batch Normalization
-- ReLU Activation
-- Max Pooling
-- Fully Connected Layers
+| Feature | Details |
+|---|---|
+| **EfficientNet-B0 backbone** | ImageNet-pretrained, two-phase fine-tuning |
+| **Frequency-domain analysis** | Optional FFT branch detects GAN grid artefacts |
+| **Face detection** | OpenCV Haar cascade — crops to face before inference |
+| **Grad-CAM explanations** | Heatmap overlay showing which regions drove the decision |
+| **Full video analysis** | Samples N frames evenly, aggregates with majority vote + timeline chart |
+| **Live webcam** | `streamlit-webrtc` in the UI + CLI realtime script |
+| **FastAPI backend** | REST + WebSocket endpoints for image, video, and frame streaming |
+| **Fully offline** | No internet connection required for inference |
+| **MPS / CUDA / CPU** | Auto-detects Apple Silicon, NVIDIA GPU, or CPU |
 
-#### Frequency Branch
-- Fast Fourier Transform (FFT)
-- Frequency artifact extraction
-- Feature fusion with spatial features
+---
 
-### 4. Classification Layer
-- Dense Layer
-- Sigmoid Activation
-- Binary Output (Real = 0, Fake = 1)
+## 📂 Project Structure
 
-### 5. Explainability Layer
-- Grad-CAM
-- Heatmap overlay on frames
-- Visual focus area highlighting
+```
+DeepShield/
+│
+├── api/                        ← FastAPI backend
+│   ├── main.py                 ← App entry point, model loaded at startup
+│   ├── schemas.py              ← Pydantic response models
+│   └── routes/
+│       ├── predict.py          ← POST /predict/image, POST /predict/video
+│       └── stream.py           ← WS /ws/webcam (real-time frame inference)
+│
+├── model/
+│   ├── cnn_model.py            ← DeepfakeCNN (EfficientNet-B0 + optional FrequencyBranch)
+│   ├── frequency_branch.py     ← FFT-based spectral feature extractor
+│   └── loss.py
+│
+├── inference/
+│   ├── predict.py              ← load_model, predict, predict_image, predict_video, predict_with_gradcam
+│   └── realtime_inference.py   ← CLI webcam / video loop with frame skipping
+│
+├── training/
+│   ├── train.py                ← Two-phase EfficientNet fine-tuning
+│   ├── evaluate.py             ← Test-set evaluation with tqdm progress
+│   ├── dataset.py              ← DataLoader, balanced subset sampling
+│   ├── metrics.py              ← Accuracy, precision, recall, F1, confusion matrix
+│   └── early_stopping.py
+│
+├── preprocessing/
+│   ├── face_detector.py        ← detect_and_crop_face() using OpenCV Haar cascade
+│   ├── frame_extractor.py      ← Extract 30 frames/video with multiprocessing
+│   ├── dataset_split.py        ← Sort raw videos → real/ fake/ using metadata.json
+│   ├── split_train_val_test.py ← 70/15/15 split grouped by video ID
+│   └── augmentations.py
+│
+├── explainability/
+│   ├── gradcam.py              ← Grad-CAM with forward + backward hooks
+│   └── heatmap_utils.py        ← Heatmap colormap overlay
+│
+├── saved_models/
+│   └── best_model.pth          ← Best checkpoint saved during training
+│
+├── app.py                      ← Streamlit UI (Image / Video / Webcam tabs)
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 🛠️ Tech Stack
+
+| Category | Tools |
+|---|---|
+| **Deep Learning** | PyTorch, TorchVision |
+| **Model** | EfficientNet-B0 (ImageNet pretrained) |
+| **Computer Vision** | OpenCV |
+| **Frequency Analysis** | PyTorch FFT (`torch.fft.fft2`, fftshift) |
+| **Explainability** | Grad-CAM (backward hooks) |
+| **Frontend** | Streamlit, streamlit-webrtc, Plotly |
+| **Backend API** | FastAPI, Uvicorn, WebSockets |
+| **Data / Metrics** | NumPy, Pandas, Scikit-learn |
+| **Training utilities** | tqdm, early stopping |
+
+---
+
+## 📊 Model Performance
+
+Trained on the **140k Real vs Fake Faces** dataset (Kaggle):
+
+| Metric | Score |
+|---|---|
+| Accuracy | ~91–92% |
+| Precision | — |
+| Recall | — |
+| F1 Score | — |
+
+> Run `python -m training.evaluate` after training to get exact numbers on your test split.
 
 ---
 
 ## 📥 Dataset Setup
 
-### Download the Dataset
+This project uses the **140k Real vs Fake Faces** dataset from Kaggle.
 
-This project uses the **Deepfake Detection Challenge (DFDC)** dataset from Kaggle.
+**Download link:** [https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces](https://www.kaggle.com/datasets/xhlulu/140k-real-and-fake-faces)
 
-**Download link:** [https://www.kaggle.com/competitions/deepfake-detection-challenge/data?select=train_sample_videos](https://www.kaggle.com/competitions/deepfake-detection-challenge/data?select=train_sample_videos)
-
-Download the `train_sample_videos` folder. It contains:
-- ~400 short `.mp4` video clips (both REAL and FAKE)
-- A `metadata.json` file that labels each video as `"REAL"` or `"FAKE"`
-
-> **Note:** The `data/` folder is listed in `.gitignore` and is **not tracked by Git**. You must download and place the dataset manually every time you set up the project on a new machine.
-
-### Where to Place the Dataset
-
-After downloading, place the contents inside the project so the folder structure looks like this:
+After downloading, place it at the project root:
 
 ```
 DeepShield/
-└── data/
-    └── train_sample_videos/
-        ├── aapnvogymq.mp4
-        ├── abarnvbtwb.mp4
-        ├── ...
-        └── metadata.json
+└── 140k-faces/
+    └── real_vs_fake/
+        └── real-vs-fake/
+            ├── train/
+            │   ├── real/
+            │   └── fake/
+            ├── valid/
+            │   ├── real/
+            │   └── fake/
+            └── test/
+                ├── real/
+                └── fake/
 ```
 
-The `data/` directory must sit at the **root of the project** (same level as `preprocessing/`, `model/`, `training/`, etc.).
+> The `140k-faces/` folder is in `.gitignore` and must be placed manually on each machine.
 
 ---
 
-## 🎯 Problem Statement
-
-The rise of deepfake videos has created major security and trust issues across digital platforms. Manual verification is inefficient and unreliable. An automated AI-based detection system is necessary to:
-
-- Detect manipulated facial regions
-- Identify frequency inconsistencies
-- Provide explainable predictions
-- Support real-time inference
-
----
-
-## 💡 Proposed Solution
-
-This system implements a computer vision pipeline that:
-
-1. Extracts frames from videos
-2. Detects faces
-3. Preprocesses images
-4. Trains a Convolutional Neural Network (CNN)
-5. Applies frequency-domain analysis
-6. Classifies real vs fake
-7. Generates Grad-CAM heatmaps for interpretability
-
----
-
-## 📂 Project Structure
-deepfake-detection-system/
-│
-├── data/
-│ ├── raw/
-│ │ ├── real/
-│ │ ├── fake/
-│ │ └── metadata.json
-│ │
-│ └── processed/
-│ ├── real/
-│ └── fake/
-│
-├── preprocessing/
-│ ├── dataset_split.py
-│ ├── frame_extractor.py
-│ ├── face_detector.py
-│ └── augmentations.py
-│
-├── model/
-│ ├── cnn_model.py
-│ ├── frequency_branch.py
-│ └── loss.py
-│
-├── training/
-│ ├── train.py
-│ ├── evaluate.py
-│ ├── metrics.py
-│ └── early_stopping.py
-│
-├── inference/
-│ ├── predict.py
-│ └── realtime_inference.py
-│
-├── explainability/
-│ ├── gradcam.py
-│ └── heatmap_utils.py
-│
-├── notebooks/
-│ ├── EDA.ipynb
-│ └── FFT_experiments.ipynb
-│
-├── app.py
-├── requirements.txt
-└── README.md
-
----
-
-## 🛠 Tech Stack
-
-### Programming Language
-- Python 3.x
-
-### Deep Learning
-- PyTorch / TensorFlow
-
-### Computer Vision
-- OpenCV
-- CNN Architecture
-- FFT (Frequency Analysis)
-
-### Data Processing
-- NumPy
-- Pandas
-- Scikit-learn
-
-### Visualization
-- Matplotlib
-- Seaborn
-
-### Explainability
-- Grad-CAM
-
-### Deployment
-- Streamlit
-
----
-
-## 📊 Evaluation Metrics
-
-- Accuracy
-- Precision
-- Recall
-- F1 Score
-- Confusion Matrix
-
----
-
-## 🔥 Key Features
-
-- Binary classification (Real vs Fake)
-- Frame-level deepfake detection
-- Spatial + Frequency feature fusion
-- Model interpretability via Grad-CAM
-- Real-time inference capability
-
----
-
-## 👥 Handoff: Extending Member 1's Work
-
-Member 1 (ML Lead) owns: dataset preprocessing, model architecture, training loop, evaluation, model saving, and Grad-CAM. The following describes how **Member 2** (System + Backend) and **Member 3** (Frontend + Visualization) can build on that work.
-
----
-
-### Member 2 – System + Backend Engineer
-
-**You integrate the model.** Member 1 provides:
-
-- **Model**: `model/cnn_model.py` (DeepfakeCNN), checkpoint at `saved_models/best_model.pth`
-- **Inference helpers**: `inference/predict.py` — `load_model()`, `get_transform()`, `preprocess_image()`, `predict()`, and optionally `predict_with_gradcam()`
-- **Realtime loop**: `inference/realtime_inference.py` — frame capture, same preprocessing, model forward, draw label on frame
-
-**What you can extend:**
-
-| Area | Where to start | Notes |
-|------|----------------|--------|
-| **Model loading** | `inference/predict.load_model(model_path, device)` | Returns `(model, device)`. Use for any backend (FastAPI, script, etc.). |
-| **Preprocessing** | `inference/predict.get_transform()` and `preprocess_image(image)` | Must match training: 224×224, ImageNet normalize. Use for every image/frame. |
-| **Single-image prediction** | `predict_image(model_path, image_path)` or `predict(model, tensor, device)` | Returns label ("Real"/"Fake") and confidence. Use for upload endpoints. |
-| **Grad-CAM** | `predict_with_gradcam(model_path, image_path)` | Returns label, confidence, `heatmap`, and BGR `overlay`. Use for explainability API. |
-| **Video / webcam** | `inference/realtime_inference.run_realtime(video_path, model_path, show_gradcam)` | Loop is in `run_realtime`. Extract this into a generator or async frame pipeline for your API. |
-| **API (FastAPI)** | New file e.g. `api/main.py` | Endpoints: POST image → JSON `{label, confidence, prob_real}`; optional endpoint that returns overlay image. For video: stream frames or run `run_realtime` logic in a worker/WebSocket. |
-| **Optimization** | Same inference code, different wiring | Keep preprocessing identical. Reduce lag by: batching frames, threading (capture vs inference), optional Grad-CAM only on demand, model half-precision if needed. |
-| **Confidence** | `predict()` already returns `(label, confidence)` | `confidence` is P(Real) for Real and 1−P(Real) for Fake. Expose as-is or convert to percentage in the API. |
-
-**Suggested structure for your work:**
-
-- `api/` or `backend/`: FastAPI app, routes for `/predict` (image), `/predict_with_gradcam` (image + overlay), and optionally video/streaming.
-- Reuse `inference/predict.py` and `inference/realtime_inference.py`; avoid duplicating preprocessing or model loading.
-
----
-
-### Member 3 – Frontend + Visualization Engineer
-
-**You own UI and demo.** Member 1’s work gives you:
-
-- **Streamlit app**: `app.py` — upload image (with optional Grad-CAM), upload video (first-frame prediction), placeholder for webcam
-- **Prediction outputs**: label ("Real"/"Fake"), confidence (0–1), and optionally a Grad-CAM overlay image (BGR numpy or from API)
-
-**What you can extend:**
-
-| Area | Where to start | Notes |
-|------|----------------|--------|
-| **Upload image** | `app.py` — "Upload image" + `predict_image` / `predict_with_gradcam` | Already shows label and confidence. You can improve layout, add “Real %” / “Fake %” bar, and style the result. |
-| **Grad-CAM overlay** | `predict_with_gradcam()` returns `overlay` (BGR image) | Display as a second image or tab. Use `st.image(overlay, channels="BGR")`. Optionally add a toggle or separate “Explain” button. |
-| **Upload video** | `app.py` — "Upload video" | Currently runs on first frame only. For full-video UX: either embed a link to run `python -m inference.realtime_inference --video <path>`, or call Member 2’s video/streaming API and render frames in the UI. |
-| **Webcam** | Placeholder in `app.py` | Streamlit has no direct webcam API. Options: (1) Use Member 2’s backend: frontend captures webcam, sends frames to API, displays prediction + overlay. (2) Keep “use CLI: realtime_inference” for demo and add a short instruction in the app. |
-| **Real/Fake percentage** | Backend already returns `prob_real` and `confidence` | Show e.g. “Real: 73%” and “Fake: 27%” (from `prob_real` and `1 - prob_real`). Use progress bars or a simple gauge. |
-| **Heatmap display** | Same `overlay` from Grad-CAM | Overlay is already blended (heatmap on image). You can add a side-by-side: original vs overlay, or a slider to blend. |
-| **UI polish** | `app.py` + optional CSS/Streamlit config | Improve titles, spacing, sidebar, error messages, and a short “How to use” for judges. Consider `streamlit run app.py` as the main demo entry. |
-
-**Suggested structure for your work:**
-
-- Keep `app.py` as the main Streamlit entry; refactor into components (e.g. `components/image_upload.py`, `components/video_upload.py`) if the file grows.
-- If you add a separate frontend (e.g. React/Vue): talk to Member 2 for API contract (request/response JSON and image formats); use the same labels and confidence/prob_real fields.
-
----
-
-### Shared conventions (all members)
-
-- **Preprocessing**: Always use `inference/predict.get_transform()` and `preprocess_image()` (or the same resize + normalize) so results match the trained model.
-- **Model path**: Default `saved_models/best_model.pth`; make it configurable (env var or CLI) in backend and app.
-- **Labels**: `"Real"` / `"Fake"`; confidence in [0, 1]; optional `prob_real` for percentage display.
-
----
-
-## 🚀 Full Workflow — Step-by-Step Commands
-
-Follow these commands **in order** from the root of the project directory.
-
----
+## 🚀 Full Setup & Workflow
 
 ### Prerequisites
 
-#### 1. System Libraries (macOS — must be done before creating the venv)
-
-Some Python modules require native system libraries that are not installed via `pip`. If these are missing, Python itself will be compiled without support for them and you will see errors like `ModuleNotFoundError: No module named '_lzma'`.
-
-Install them with Homebrew **before** running `pyenv install` or creating the venv:
+#### 1. System libraries (macOS — install before creating the venv)
 
 ```bash
-brew install xz          # required for Python's _lzma module (used by torchvision)
-brew install cmake       # required by some OpenCV build variants
-brew install libomp      # optional: OpenMP support for scikit-learn on Apple Silicon
+brew install xz cmake libomp
 ```
 
-> If you already installed Python via pyenv **before** installing `xz`, you must reinstall Python so it compiles with `lzma` support:
-> ```bash
-> pyenv uninstall 3.12.2
-> pyenv install 3.12.2
-> ```
-> Then recreate the venv (see below).
-
-#### 2. Python Version
-
-This project requires **Python 3.10 or higher**. Recommended: **3.12.x** via pyenv.
+#### 2. Python version (3.10+ recommended)
 
 ```bash
 pyenv install 3.12.2
 pyenv local 3.12.2
 ```
 
-#### 3. Virtual Environment
+#### 3. Virtual environment
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate     # macOS / Linux
-# venv\Scripts\activate      # Windows
+source venv/bin/activate       # macOS / Linux
+# venv\Scripts\activate        # Windows
 ```
 
-#### 4. Python Dependencies
+#### 4. Install dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -365,193 +212,227 @@ pip install -r requirements.txt
 
 ---
 
-### Step 1 — Split Videos into REAL / FAKE folders
-
-```bash
-python -m preprocessing.dataset_split
-```
-
-**What it does:**
-Reads `data/train_sample_videos/metadata.json` and moves each video into either `data/raw/real/` or `data/raw/fake/` based on its label. This creates the clean per-class folder structure that all downstream steps rely on.
-
-After this step your `data/` folder will look like:
-
-```
-data/
-├── train_sample_videos/    ← original download (now partially emptied)
-└── raw/
-    ├── real/               ← REAL-labeled .mp4 files
-    └── fake/               ← FAKE-labeled .mp4 files
-```
-
----
-
-### Step 2 — Extract Frames from Videos
-
-```bash
-python -m preprocessing.frame_extractor
-```
-
-**What it does:**
-Opens every `.mp4` / `.avi` / `.mov` file in `data/raw/real/` and `data/raw/fake/`. For each video it seeks to **30 evenly-spaced frame positions**, decodes only those frames, resizes each one to **224×224 pixels**, and saves them as `.jpg` images in `data/processed/real/` and `data/processed/fake/`. Multiprocessing is used to parallelize across all available CPU cores.
-
-After this step:
-
-```
-data/
-└── processed/
-    ├── real/   ← 224×224 .jpg frames from REAL videos
-    └── fake/   ← 224×224 .jpg frames from FAKE videos
-```
-
----
-
-### Step 3 — Prepare Train / Val / Test Splits
-
-```bash
-python -m preprocessing.split_train_val_test
-```
-
-**What it does:**
-Reads the frame images from `data/processed/real/` and `data/processed/fake/` and groups them **by video ID** (all frames from the same source video are kept together). It then assigns each video to one split — **70 % train, 15 % val, 15 % test** — so no frames from the same video leak across splits. Copies are written to the `ImageFolder`-compatible layout that `training/dataset.py` expects:
-
-```
-data/processed/
-├── train/
-│   ├── real/
-│   └── fake/
-├── val/
-│   ├── real/
-│   └── fake/
-└── test/
-    ├── real/
-    └── fake/
-```
-
----
-
-### Step 4 — Train the Model
+### Step 1 — Train the Model
 
 ```bash
 python -m training.train
 ```
 
-**What it does:**
-Loads the frame images through `DataLoader` (batch size 32, ImageNet normalization). Trains the `DeepfakeCNN` model using **Binary Cross-Entropy with Logits loss** and the **Adam optimizer** (lr = 1e-4) for up to 50 epochs. After every epoch, validation loss and accuracy are printed. The best checkpoint (lowest validation loss) is saved to `saved_models/best_model.pth`. Training stops early if validation loss does not improve for 5 consecutive epochs (early stopping).
+Trains DeepfakeCNN using two-phase EfficientNet fine-tuning for up to 50 epochs. Best checkpoint is saved to `saved_models/best_model.pth` whenever validation accuracy improves.
+
+**Training phases:**
+- **Phase 1** (epochs 1–5): Backbone frozen, only the classifier head trains at lr=1e-4
+- **Phase 2** (epoch 6+): Last two EfficientNet blocks unfrozen, full model trains at lr=1e-5
 
 Sample output:
-
 ```
-Epoch 1/50  train_loss=0.6821  val_loss=0.6543  val_acc=0.6120
-Epoch 2/50  train_loss=0.5934  val_loss=0.5712  val_acc=0.7040
+Epoch 1/50 [Ph1]  train_loss=0.512  val_loss=0.431  val_acc=0.8120
 ...
-Early stopping at epoch 18
+Epoch 20/50 [Ph2]  train_loss=0.214  val_loss=0.198  val_acc=0.9167
 ```
 
 ---
 
-### Step 5 — Evaluate on the Test Set
+### Step 2 — Evaluate on the Test Set
 
 ```bash
 python -m training.evaluate
 ```
 
-**What it does:**
-Loads `saved_models/best_model.pth`, runs it over the held-out test split, and prints Accuracy, Precision, Recall, F1-Score, and the Confusion Matrix. No gradient computation is performed (inference-only).
+Loads `saved_models/best_model.pth` and reports Accuracy, Precision, Recall, F1, and Confusion Matrix on the held-out test set. Includes a tqdm progress bar.
 
 Sample output:
-
 ```
+Evaluating: 100%|████████████| 625/625 [05:23<00:00]
+
 Test set evaluation
 ----------------------------------------
-Accuracy:  0.8750
-Precision: 0.8910
-Recall:    0.8600
-F1:        0.8752
-
-Confusion matrix (rows=true, cols=pred; class 0=fake, 1=real)
-             Pred Fake  Pred Real
-True Fake      342      48
-True Real       31     279
+Accuracy:  0.9167
+Precision: 0.9210
+Recall:    0.9140
+F1:        0.9175
 ```
 
 ---
 
-### Step 6 — Run the Streamlit Demo (Full UI)
+### Step 3 — Launch the Streamlit App
 
 ```bash
 streamlit run app.py
 ```
 
-**What it does:**
-Launches a local web app in your browser. You can:
-- Upload an image frame and get a **Real / Fake prediction** with confidence score
-- Request a **Grad-CAM heatmap overlay** to see which facial regions drove the decision
-- Upload a video and run prediction on the first extracted frame
+Opens the full UI at `http://localhost:8501`. Three tabs:
+
+#### 📷 Image Tab
+- Upload any face image (JPG/PNG)
+- Shows verdict card with confidence %, P(Real), P(Fake)
+- Enable **Grad-CAM** in sidebar to see which facial regions influenced the decision
+- Plotly donut chart shows Real/Fake probability split
+
+#### 🎬 Video Tab
+- Upload a video (MP4/AVI/MOV)
+- Choose how many frames to analyze (4–32)
+- Summary metrics: frames analyzed, avg P(Real), real/fake frame counts
+- Interactive **P(Real) timeline chart** (per-frame line chart with 0.5 threshold)
+- **Frame distribution histogram** showing score spread
+- Collapsible per-frame detail table
+
+#### 📹 Webcam Tab
+- Live webcam feed via `streamlit-webrtc`
+- Inference every 3rd frame to keep stream smooth
+- Bottom banner shows Real/Fake label + confidence
+- Top bar shows P(Real) as a fill indicator
+- Falls back gracefully if `streamlit-webrtc` is not installed
+
+**Sidebar options:**
+- Toggle Grad-CAM overlay
+- Score interpretation table (what P(Real) ranges mean)
 
 ---
 
-### Quick Reference — All Commands in Order
+### Step 4 — Run the FastAPI Backend
 
 ```bash
-# ── System setup (macOS, one-time) ──────────────────────────────────────────
-brew install xz cmake libomp        # system libs required before Python compile
-pyenv install 3.12.2 && pyenv local 3.12.2
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-# ── Python environment ───────────────────────────────────────────────────────
-python3 -m venv venv
-source venv/bin/activate
+Model is loaded **once at startup** and reused for all requests.
+
+Interactive API docs: `http://localhost:8000/docs`
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Check if model is loaded and which device is in use |
+| `/predict/image` | POST | Upload image → `{label, confidence, prob_real}` |
+| `/predict/video` | POST | Upload video → aggregated + per-frame results |
+| `/ws/webcam` | WebSocket | Send JPEG bytes → receive JSON predictions in real-time |
+
+Example request (image):
+```bash
+curl -X POST http://localhost:8000/predict/image \
+  -F "file=@face.jpg"
+```
+
+Example response:
+```json
+{
+  "label": "Fake",
+  "confidence": 0.9312,
+  "prob_real": 0.0688
+}
+```
+
+---
+
+### Step 5 — CLI Real-Time Inference (Webcam or Video)
+
+```bash
+# Webcam
+python -m inference.realtime_inference
+
+# Video file
+python -m inference.realtime_inference --video path/to/video.mp4
+
+# With Grad-CAM overlay
+python -m inference.realtime_inference --video path/to/video.mp4 --gradcam
+```
+
+Press **Q** to quit. Inference runs every 3rd frame for smooth display.
+
+---
+
+### Quick Reference
+
+```bash
+# ── Environment ─────────────────────────────────────────
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# ── Data pipeline ────────────────────────────────────────────────────────────
-# 1. Sort raw videos into REAL / FAKE folders using metadata.json
-python -m preprocessing.dataset_split
-
-# 2. Extract 30 frames per video at 224×224
-python -m preprocessing.frame_extractor
-
-# 3. Split frames into train / val / test (70 / 15 / 15, grouped by video)
-python -m preprocessing.split_train_val_test
-
-# ── Model ────────────────────────────────────────────────────────────────────
-# 4. Train the model
+# ── Train ───────────────────────────────────────────────
 python -m training.train
 
-# 5. Evaluate on test set
+# ── Evaluate ────────────────────────────────────────────
 python -m training.evaluate
 
-# ── Demo ─────────────────────────────────────────────────────────────────────
-# 6. Launch the Streamlit app
+# ── Streamlit UI ────────────────────────────────────────
 streamlit run app.py
+
+# ── FastAPI backend ─────────────────────────────────────
+uvicorn api.main:app --reload --port 8000
+
+# ── CLI webcam / video ───────────────────────────────────
+python -m inference.realtime_inference [--video <path>] [--gradcam]
 ```
 
 ---
 
-## 🚀 Applications
+## 🔬 Model Architecture Details
+
+### DeepfakeCNN
+
+```
+EfficientNet-B0 (pretrained on ImageNet)
+  └── features[0..8]  (MBConv blocks)
+  └── classifier
+        ├── Dropout(0.4)
+        └── Linear(1280 → 1)          # Default mode
+
+Optional: use_frequency=True
+  EfficientNet features (1280-dim)
+  + FrequencyBranch (128-dim)
+  → Linear(1408 → 256) → ReLU → Dropout(0.4) → Linear(256 → 1)
+```
+
+### FrequencyBranch
+
+Detects spectral artefacts characteristic of GAN-generated images:
+
+1. `torch.fft.fft2` — 2D Fast Fourier Transform
+2. `fftshift` — centres low-frequency content for spatially-consistent conv filters
+3. `log1p` — compresses extreme dynamic range of FFT magnitudes
+4. Two Conv2D + BatchNorm + MaxPool blocks
+5. Fully connected → 128-dim feature vector
+
+### Two-Phase Training
+
+| Phase | Epochs | LR | Backbone |
+|---|---|---|---|
+| Phase 1 (warm-up) | 1–5 | 1e-4 | Fully frozen |
+| Phase 2 (fine-tune) | 6+ | 1e-5 | Last 2 blocks unfrozen |
+
+---
+
+## 📊 Evaluation Metrics
+
+| Metric | Description |
+|---|---|
+| Accuracy | Overall correct classifications |
+| Precision | Of predicted fakes, how many were actually fake |
+| Recall | Of actual fakes, how many were caught |
+| F1 Score | Harmonic mean of precision and recall |
+| Confusion Matrix | True/False Positive/Negative breakdown |
+
+---
+
+## 🌐 Applications
 
 - Social media content verification
 - News authenticity validation
-- Cybercrime detection
 - Digital identity protection
-- Media forensics
+- Cybercrime and fraud detection
+- Media forensics and journalism
 
 ---
 
-![ER Diagram](assets/Real_Time_deepfake_Detection.png)
-
 ## 🔮 Future Enhancements
 
-- Transformer-based models
-- 3D CNN for temporal modeling
-- EfficientNet backbone
-- Cloud deployment (AWS/GCP)
-- Mobile integration
+- Temporal modeling with 3D CNN or Vision Transformer across video frames
+- Audio-visual consistency check (voice + face sync)
+- Browser extension for in-page detection
+- Mobile deployment (CoreML / TFLite)
+- Confidence calibration and uncertainty estimation
 
-
-## 👩‍💻 Author
-priyankagnana |aparajita | aditi
-AI & Machine Learning Enthusiast  
-Computer Vision | Deep Learning | Explainable AI  
+---
 
 ## 📜 License
 
