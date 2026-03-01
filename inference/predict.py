@@ -1,5 +1,5 @@
 """
-Single-image inference: load model, same preprocessing as training, output Real/Fake + confidence.
+Single-image and video inference: load model, same preprocessing as training, output Real/Fake + confidence.
 Run from project root: python -m inference.predict path/to/image.jpg
 """
 
@@ -23,6 +23,14 @@ NORMALIZE_MEAN = [0.485, 0.456, 0.406]
 NORMALIZE_STD = [0.229, 0.224, 0.225]
 
 
+def _get_device() -> torch.device:
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 def get_transform():
     return transforms.Compose([
         transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
@@ -34,9 +42,9 @@ def get_transform():
 def load_model(model_path="saved_models/best_model.pth", device=None):
     """Load trained DeepfakeCNN from checkpoint."""
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = _get_device()
     model = DeepfakeCNN().to(device)
-    state = torch.load(model_path, map_location=device)
+    state = torch.load(model_path, map_location=device, weights_only=True)
     model.load_state_dict(state)
     model.eval()
     return model, device
@@ -132,6 +140,76 @@ def predict_with_gradcam(model_path, image_path, device=None):
         "prob_real": prob_real,
         "heatmap": heatmap,
         "overlay": overlay,
+    }
+
+
+def predict_video(model_path, video_path, num_frames=16, device=None):
+    """
+    Sample num_frames evenly across the video, run inference on each, and
+    return an aggregated result plus per-frame breakdown.
+
+    Returns dict with keys:
+        label        – majority-vote label ("Real" or "Fake")
+        confidence   – average confidence across sampled frames
+        prob_real    – average P(Real) across sampled frames
+        frame_results – list of {frame_idx, label, confidence, prob_real}
+        frames_analyzed – number of frames actually analyzed
+    """
+    import cv2
+
+    model, device = load_model(model_path, device)
+    transform = get_transform()
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Cannot open video: {video_path}")
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError("Video has no readable frames.")
+
+    # Sample frame indices evenly across the video
+    sample_count = min(num_frames, total_frames)
+    indices = [int(i * total_frames / sample_count) for i in range(sample_count)]
+
+    frame_results = []
+    for idx in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        tensor = preprocess_image(frame_rgb, transform)
+        with torch.no_grad():
+            logit = model(tensor.to(device))[0, 0].item()
+        prob_real = torch.sigmoid(torch.tensor(logit)).item()
+        lbl = "Real" if prob_real >= 0.5 else "Fake"
+        conf = prob_real if lbl == "Real" else (1.0 - prob_real)
+        frame_results.append({
+            "frame_idx": idx,
+            "label": lbl,
+            "confidence": round(conf, 4),
+            "prob_real": round(prob_real, 4),
+        })
+
+    cap.release()
+
+    if not frame_results:
+        return {"label": "Unknown", "confidence": 0.0, "prob_real": 0.0,
+                "frame_results": [], "frames_analyzed": 0}
+
+    avg_prob_real = sum(r["prob_real"] for r in frame_results) / len(frame_results)
+    avg_confidence = sum(r["confidence"] for r in frame_results) / len(frame_results)
+    real_votes = sum(1 for r in frame_results if r["label"] == "Real")
+    majority_label = "Real" if real_votes > len(frame_results) / 2 else "Fake"
+
+    return {
+        "label": majority_label,
+        "confidence": round(avg_confidence, 4),
+        "prob_real": round(avg_prob_real, 4),
+        "frame_results": frame_results,
+        "frames_analyzed": len(frame_results),
     }
 
 
