@@ -6,6 +6,7 @@ Run from project root: streamlit run app.py
 import os
 import sys
 import tempfile
+import time
 
 import cv2
 import numpy as np
@@ -239,6 +240,23 @@ def _certainty_badge(prob_real: float):
     )
 
 
+def _inference_time_display(seconds: float, frames: int | None = None):
+    """Display 'Analyzed in 0.3s' or 'Analyzed N frames in 2.1s' under the verdict."""
+    if frames is not None and frames > 1:
+        st.caption(f"Analyzed {frames} frames in {seconds:.2f}s")
+    else:
+        st.caption(f"Analyzed in {seconds:.2f}s")
+
+
+def _copy_summary(label: str, confidence: float, prob_real: float, frames: int | None = None):
+    """Show a one-line summary in a code block for easy copy-paste."""
+    line = f"DeepShield: {label} · {confidence:.1%} confidence · P(Real)={prob_real:.3f}"
+    if frames is not None and frames > 1:
+        line += f" · {frames} frames"
+    st.caption("Copy summary:")
+    st.code(line, language=None)
+
+
 def _gradcam_histogram(heatmap: np.ndarray):
     """Histogram of Grad-CAM heatmap values (where the model focused)."""
     try:
@@ -431,12 +449,14 @@ def _image_tab(show_gradcam: bool):
             tmp.write(file.read())
             path = tmp.name
         try:
+            t0 = time.perf_counter()
             if show_gradcam:
                 from inference.predict import predict_with_gradcam
                 out = predict_with_gradcam(MODEL_PATH, path)
             else:
                 from inference.predict import predict_image
                 out = predict_image(MODEL_PATH, path)
+            elapsed = time.perf_counter() - t0
         except Exception as e:
             st.error(f"Inference failed: {e}")
             os.unlink(path)
@@ -445,6 +465,8 @@ def _image_tab(show_gradcam: bool):
     _hr()
     _verdict_row(out["label"], out["confidence"], out["prob_real"])
     _certainty_badge(out["prob_real"])
+    _inference_time_display(elapsed)
+    _copy_summary(out["label"], out["confidence"], out["prob_real"])
 
     if show_gradcam:
         c1, c2, c3 = st.columns([1, 1, 0.9])
@@ -454,6 +476,14 @@ def _image_tab(show_gradcam: bool):
         with c2:
             _sec("Grad-CAM")
             st.image(out["overlay"], channels="BGR", width=300)
+            _, png_buf = cv2.imencode(".png", out["overlay"])
+            st.download_button(
+                label="Download overlay",
+                data=png_buf.tobytes(),
+                file_name="gradcam_overlay.png",
+                mime="image/png",
+                key="download_gradcam_image",
+            )
             _gradcam_legend()
         with c3:
             _sec("Authenticity")
@@ -504,7 +534,9 @@ def _video_tab(show_gradcam: bool):
     try:
         with st.spinner(f"Sampling {num_frames} frames…"):
             from inference.predict import predict_video
+            t0 = time.perf_counter()
             result = predict_video(MODEL_PATH, vid_path, num_frames=num_frames)
+            elapsed = time.perf_counter() - t0
 
         real_votes = sum(1 for r in result["frame_results"] if r["label"] == "Real")
         fake_votes = result["frames_analyzed"] - real_votes
@@ -515,6 +547,11 @@ def _video_tab(show_gradcam: bool):
             note=f"{real_votes} real / {fake_votes} fake frames",
         )
         _certainty_badge(result["prob_real"])
+        _inference_time_display(elapsed, result["frames_analyzed"])
+        _copy_summary(
+            result["label"], result["confidence"], result["prob_real"],
+            frames=result["frames_analyzed"],
+        )
 
         # Metrics row: frames, avg P(Real), real/fake counts, stability (std)
         probs = [r["prob_real"] for r in result["frame_results"]] if result["frame_results"] else []
@@ -611,9 +648,84 @@ def _video_tab(show_gradcam: bool):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Webcam tab
+# Webcam tab — Cloud compatible with st.camera_input fallback
 # ─────────────────────────────────────────────────────────────────────────────
 def _webcam_tab():
+    # Check if we're in a cloud environment (no display)
+    is_cloud = os.environ.get("STREAMLIT_SHARING_MODE") or os.environ.get("STREAMLIT_SERVER_HEADLESS")
+    
+    # Try WebRTC first (works locally and sometimes on cloud)
+    webrtc_available = False
+    try:
+        from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
+        import av
+        webrtc_available = True
+    except ImportError:
+        webrtc_available = False
+
+    # Create two sub-tabs: Camera Snapshot and Live Stream
+    cam_mode = st.radio(
+        "Capture mode",
+        ["📸 Camera Snapshot", "🎥 Live Stream (Local only)"],
+        horizontal=True,
+        help="Snapshot works everywhere. Live Stream requires local setup."
+    )
+
+    if cam_mode == "📸 Camera Snapshot":
+        _camera_snapshot_mode()
+    else:
+        _live_stream_mode(webrtc_available)
+
+
+def _camera_snapshot_mode():
+    """Browser-based camera capture using st.camera_input — works on Streamlit Cloud."""
+    st.caption("📸 Take a photo using your device camera for deepfake analysis.")
+    
+    camera_image = st.camera_input("Take a picture")
+    
+    if camera_image is not None:
+        try:
+            from PIL import Image
+            from inference.predict import get_transform, preprocess_image, predict
+            import torch
+            
+            model, device = _load_model()
+            
+            # Load and process the image
+            pil_img = Image.open(camera_image).convert("RGB")
+            img_array = np.array(pil_img)
+            
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.image(pil_img, caption="Captured Image", use_container_width=True)
+            
+            with col2:
+                with st.spinner("Analyzing..."):
+                    transform = get_transform()
+                    tensor = preprocess_image(img_array, transform)
+                    
+                    with torch.no_grad():
+                        label, confidence = predict(model, tensor, device)
+                        logit = model(tensor.to(device))[0, 0].item()
+                        prob_real = torch.sigmoid(torch.tensor(logit)).item()
+                    
+                    _verdict_row(label, confidence, prob_real)
+                    _certainty_badge(prob_real)
+                    _donut(prob_real)
+                    
+        except Exception as e:
+            st.error(f"Error analyzing image: {str(e)}")
+
+
+def _live_stream_mode(webrtc_available: bool):
+    """WebRTC-based live streaming — works locally, may not work on cloud."""
+    if not webrtc_available:
+        st.warning("⚠️ Live streaming requires `streamlit-webrtc` and `av` packages.")
+        st.code("pip install streamlit-webrtc av", language="bash")
+        st.info("💡 Use **Camera Snapshot** mode instead — it works everywhere!")
+        return
+    
     try:
         from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, RTCConfiguration
         import av
@@ -667,7 +779,7 @@ def _webcam_tab():
                 media_stream_constraints={"video": True, "audio": False},
             )
 
-        # Show latest prediction above the video: verdict, certainty, live gauge, status
+        # Show latest prediction above the video
         if ctx and ctx.video_processor:
             proc = ctx.video_processor
             if proc.label:
@@ -685,16 +797,12 @@ def _webcam_tab():
 
         st.caption(
             "**How to read:** Top bar = P(Real) (green = real, red = fake). "
-            "Verdict above updates every 3 frames. Use **Settings** (top-right) to switch theme."
+            "Verdict above updates every 3 frames."
         )
 
-    except ImportError:
-        st.info("Install streamlit-webrtc to enable the live webcam feed.")
-        st.code("pip install streamlit-webrtc av", language="bash")
-        st.caption(
-            "Alternatively, run the CLI script for webcam inference:  "
-            "`python -m inference.realtime_inference [--gradcam]`"
-        )
+    except Exception as e:
+        st.error(f"Live stream error: {str(e)}")
+        st.info("💡 Try using **Camera Snapshot** mode instead.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -764,6 +872,16 @@ def main():
         _webcam_tab()
 
 
-if __name__ == "__main__":
+# ─────────────────────────────────────────────────────────────────────────────
+# Main — Called directly (no if __name__ guard for Streamlit Cloud compatibility)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Debug: Confirm app is loading (remove after confirming deployment works)
+# st.write("✅ App loaded successfully")
+
+try:
     main()
+except Exception as e:
+    st.error(f"❌ Application error: {str(e)}")
+    st.exception(e)
     
